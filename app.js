@@ -31,8 +31,8 @@ function loadCustomerMap() {
             'hanswurst1413': {
               am_id: 'hanswurst1413',
               empfehlungsgeber: 'Hans Wurst',
-              createdAt: new Date().toISOString(), // Erstellungsdatum
-              updatedAt: new Date().toISOString(), // Letztes Update
+              createdAt: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+              updatedAt: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
               count: 0 // Anzahl der Aufrufe
             }
           }
