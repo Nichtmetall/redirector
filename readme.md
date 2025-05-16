@@ -1,7 +1,7 @@
 # URL-Redirector
 
 ## Übersicht
-Dieser Service ermöglicht die Verwaltung von URL-Weiterleitungen für verschiedene Kunden. Jeder Kunde kann mehrere Weiterleitungen haben, die durch einen Hashwert identifiziert werden.
+Dieser Service ermöglicht die Verwaltung von URL-Weiterleitungen für verschiedene Kunden. Jeder Kunde kann mehrere Weiterleitungen haben, die durch einen Code identifiziert werden.
 
 ## Installation
 1. Klone das Repository:
@@ -50,7 +50,7 @@ Der Server läuft standardmäßig auf Port 3000.
 #### Weiterleitungen
 - **Weiterleitung erstellen**
   - `GET /admin/customer/:kundenname/create/:name/:am_id`
-  - Erstellt eine neue Weiterleitung für einen bestimmten Kunden. Der Code wird automatisch generiert und basiert auf `am_id` und `kundenname`.
+  - Erstellt eine neue Weiterleitung für einen bestimmten Kunden.
 
 - **Weiterleitung aufrufen**
   - `GET /:kundenname/:code`
@@ -61,22 +61,22 @@ Der Server läuft standardmäßig auf Port 3000.
   - Löscht eine bestimmte Weiterleitung für einen Kunden.
 
 ## Datenstruktur
-Die Weiterleitungsdaten werden in der Datei `redirects.json` gespeichert. Hier ist ein Beispiel für die Struktur:
+Die Weiterleitungsdaten werden in einer SQLite-Datenbank (`redirects.db`) gespeichert. Die Datenbank enthält folgende Tabellen:
 
-```json
-{
-  "beispielkunde": {
-    "formId": "tjjsnG0hJTcpwDEhxzpx",
-    "redirects": {
-      "a1b2c3d4": {
-        "am_id": "hanswurst1413",
-        "empfehlungsgeber": "Hans Wurst"
-      }
-    }
-  }
-}
-```
+### Tabelle: customers
+- `id` (TEXT): Primärschlüssel, eindeutiger Identifier für den Kunden
+- `formId` (TEXT): ID des Formulars für die Weiterleitung
+- `createdAt` (TEXT): Erstellungszeitpunkt des Kunden
+
+### Tabelle: redirects
+- `code` (TEXT): Code für die Weiterleitung (Teil des Primärschlüssels)
+- `customer_id` (TEXT): Zugehöriger Kunde (Teil des Primärschlüssels, Fremdschlüssel)
+- `am_id` (TEXT): ID für die Weiterleitung
+- `empfehlungsgeber` (TEXT): Name des Empfehlungsgebers
+- `createdAt` (TEXT): Erstellungszeitpunkt der Weiterleitung
+- `updatedAt` (TEXT): Zeitpunkt der letzten Aktualisierung
+- `count` (INTEGER): Anzahl der Aufrufe der Weiterleitung
 
 ## Hinweise
-- Der Hashwert für die Weiterleitungen wird aus der Kombination von `am_id` und `kundenname` generiert und ist auf 8 Zeichen begrenzt.
 - Der Admin-Bereich ist durch einen Token geschützt, der in der `.env`-Datei definiert ist.
+- Bei der ersten Ausführung wird automatisch ein Beispielkunde mit einer Beispiel-Weiterleitung angelegt.

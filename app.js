@@ -5,74 +5,107 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 const dotenv = require('dotenv');
+const sqlite3 = require('sqlite3').verbose();
 
 // .env Datei für Umgebungsvariablen laden
 dotenv.config();
 
 // Sicherheitseinstellungen
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'sefrin-secure-token-change-me';
-const DATA_FILE = path.join(__dirname, 'redirects.json');
+const DB_FILE = path.join(__dirname, 'redirects.db');
 
-// Laden der Kunden- und Weiterleitungsdaten aus Datei oder Initialisierung
-let customerMap = {};
+// Datenbank initialisieren
+const db = new sqlite3.Database(DB_FILE, (err) => {
+  if (err) {
+    console.error('Fehler beim Öffnen der Datenbank:', err.message);
+  } else {
+    console.log('Verbindung zur SQLite-Datenbank hergestellt');
+    initDatabase();
+  }
+});
 
-function loadCustomerMap() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf8');
-      customerMap = JSON.parse(data);
-      console.log(`Kundendaten geladen: ${Object.keys(customerMap).length} Einträge`);
-    } else {
-      // Beispiel-Kunde hinzufügen, wenn die Datei nicht existiert
-      customerMap = {
-        'beispielkunde': {
-          formId: 'tjjsnG0hJTcpwDEhxzpx',
-          redirects: {
-            'hanswurst1413': {
-              am_id: 'hanswurst1413',
-              empfehlungsgeber: 'Hans Wurst',
-              createdAt: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
-              updatedAt: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
-              count: 0 // Anzahl der Aufrufe
-            }
+// Datenbank-Schema erstellen
+function initDatabase() {
+  db.serialize(() => {
+    // Tabelle für Kunden
+    db.run(`CREATE TABLE IF NOT EXISTS customers (
+      id TEXT PRIMARY KEY,
+      formId TEXT NOT NULL,
+      createdAt TEXT
+    )`);
+
+    // Tabelle für Weiterleitungen
+    db.run(`CREATE TABLE IF NOT EXISTS redirects (
+      code TEXT,
+      customer_id TEXT,
+      am_id TEXT NOT NULL,
+      empfehlungsgeber TEXT NOT NULL,
+      createdAt TEXT,
+      updatedAt TEXT,
+      count INTEGER DEFAULT 0,
+      PRIMARY KEY (code, customer_id),
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+    )`, (err) => {
+      if (err) {
+        console.error('Fehler beim Erstellen der Tabellen:', err.message);
+      } else {
+        console.log('Datenbank-Tabellen wurden erstellt');
+        
+        // Prüfen, ob bereits Daten in der Datenbank vorhanden sind
+        db.get("SELECT COUNT(*) as count FROM customers", (err, row) => {
+          if (err) {
+            console.error('Fehler beim Abfragen der Datenbank:', err.message);
+            return;
           }
-        }
-      };
-      saveCustomerMap();
-      console.log('Neue Kundendatei mit Beispieleintrag erstellt');
-    }
-  } catch (error) {
-    console.error('Fehler beim Laden der Kundendaten:', error);
-    // Fallback zu einer leeren Map
-    customerMap = {};
-  }
+          
+          // Wenn keine Kunden vorhanden sind, Beispieldaten einfügen
+          if (row.count === 0) {
+            createExampleData();
+          }
+        });
+      }
+    });
+  });
 }
 
-// Speichern der Kundendaten in Datei
-function saveCustomerMap() {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(customerMap, null, 2), 'utf8');
-    console.log('Kundendaten gespeichert');
-    return true;
-  } catch (error) {
-    console.error('Fehler beim Speichern der Kundendaten:', error);
-    return false;
-  }
+// Beispieldaten erstellen
+function createExampleData() {
+  const now = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+  
+  // Beispielkunde einfügen
+  db.run(`INSERT INTO customers (id, formId, createdAt) VALUES (?, ?, ?)`, 
+    ['beispielkunde', 'tjjsnG0hJTcpwDEhxzpx', now], 
+    function(err) {
+      if (err) {
+        console.error('Fehler beim Einfügen des Beispielkunden:', err.message);
+        return;
+      }
+      console.log('Beispielkunde erstellt');
+      
+      // Beispiel-Weiterleitung einfügen
+      db.run(`INSERT INTO redirects (code, customer_id, am_id, empfehlungsgeber, createdAt, updatedAt, count) 
+              VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+        ['hanswurst1413', 'beispielkunde', 'hanswurst1413', 'Hans Wurst', now, now, 0], 
+        function(err) {
+          if (err) {
+            console.error('Fehler beim Einfügen der Beispiel-Weiterleitung:', err.message);
+            return;
+          }
+          console.log('Beispiel-Weiterleitung erstellt');
+        });
+    });
 }
-
-// Beim Start Kundendaten laden
-loadCustomerMap();
 
 // Middleware zur Überprüfung des Admin-Tokens
 function verifyAdminToken(req, res, next) {
   const token = req.query.token;
-  
+
   if (!token || token !== ADMIN_TOKEN) {
-    return res.status(401).json({ 
-      error: 'Nicht autorisiert. Bitte gültigen Admin-Token angeben.' 
+    return res.status(401).json({
+      error: 'Nicht autorisiert. Bitte gültigen Admin-Token angeben.'
     });
   }
-  
+
   next();
 }
 
@@ -80,60 +113,85 @@ function verifyAdminToken(req, res, next) {
 app.get('/:kundenname/:code', (req, res) => {
   const kundenname = req.params.kundenname;
   const code = req.params.code;
-  
-  // Prüfen, ob der Kunde existiert
-  if (!customerMap[kundenname]) {
-    return res.status(404).send('Kunde nicht gefunden');
-  }
-  
-  // Prüfen, ob der Code beim Kunden existiert
-  if (customerMap[kundenname].redirects[code]) {
-    const params = customerMap[kundenname].redirects[code];
-    const formId = customerMap[kundenname].formId;
-    const baseUrl = `https://api.leadconnectorhq.com/widget/form/${formId}`;
-    const redirectUrl = `${baseUrl}?am_id=${encodeURIComponent(params.am_id)}&empfehlungsgeber=${encodeURIComponent(params.empfehlungsgeber)}`;
-    
+
+  // Prüfen, ob der Kunde mit dem Code existiert
+  db.get(`
+    SELECT c.formId, r.am_id, r.empfehlungsgeber, r.count 
+    FROM customers c
+    JOIN redirects r ON c.id = r.customer_id
+    WHERE c.id = ? AND r.code = ?
+  `, [kundenname, code], (err, row) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).send('Serverfehler');
+    }
+
+    if (!row) {
+      return res.status(404).send('Weiterleitung nicht gefunden');
+    }
+
+    // URL für die Weiterleitung erstellen
+    const baseUrl = `https://api.leadconnectorhq.com/widget/form/${row.formId}`;
+    const redirectUrl = `${baseUrl}?am_id=${encodeURIComponent(row.am_id)}&empfehlungsgeber=${encodeURIComponent(row.empfehlungsgeber)}`;
+
     // Anzahl der Aufrufe erhöhen und Timestamp aktualisieren
-    params.count += 1;
-    params.updatedAt = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }); // Deutsche Zeit
-    
-    // Änderungen speichern
-    saveCustomerMap();
-    
+    const now = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+    db.run(`
+      UPDATE redirects
+      SET count = count + 1, updatedAt = ?
+      WHERE customer_id = ? AND code = ?
+    `, [now, kundenname, code], function(err) {
+      if (err) {
+        console.error('Fehler beim Aktualisieren des Zählers:', err.message);
+      }
+    });
+
     // 302 Redirect (temporäre Weiterleitung)
     return res.redirect(302, redirectUrl);
-  }
-  
-  // Code nicht gefunden
-  res.status(404).send('Weiterleitungs-Code nicht gefunden');
+  });
 });
 
 // Admin-Route zum Erstellen eines neuen Kunden - mit Token-Schutz
 app.get('/admin/customer/create/:kundenname/:formId', verifyAdminToken, (req, res) => {
   const kundenname = req.params.kundenname;
   const formId = req.params.formId;
-  
+  const now = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+
   // Prüfen, ob Kunde bereits existiert
-  if (customerMap[kundenname]) {
-    return res.status(400).json({
-      success: false,
-      error: 'Kunde existiert bereits'
-    });
-  }
-  
-  // Neuen Kunden anlegen
-  customerMap[kundenname] = {
-    formId: formId,
-    redirects: {}
-  };
-  
-  // Änderungen speichern
-  const saved = saveCustomerMap();
-  
-  res.json({
-    success: saved,
-    customer: kundenname,
-    formId: formId
+  db.get("SELECT id FROM customers WHERE id = ?", [kundenname], (err, row) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Datenbankfehler'
+      });
+    }
+
+    if (row) {
+      return res.status(400).json({
+        success: false,
+        error: 'Kunde existiert bereits'
+      });
+    }
+
+    // Neuen Kunden anlegen
+    db.run("INSERT INTO customers (id, formId, createdAt) VALUES (?, ?, ?)", 
+      [kundenname, formId, now], 
+      function(err) {
+        if (err) {
+          console.error('Fehler beim Erstellen des Kunden:', err.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Fehler beim Erstellen des Kunden'
+          });
+        }
+
+        res.json({
+          success: true,
+          customer: kundenname,
+          formId: formId
+        });
+      });
   });
 });
 
@@ -142,143 +200,376 @@ app.get('/admin/customer/:kundenname/create/:name/:am_id', verifyAdminToken, (re
   const kundenname = req.params.kundenname;
   const name = req.params.name;
   const amId = req.params.am_id;
-  
+  const now = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+
   // Prüfen, ob Kunde existiert
-  if (!customerMap[kundenname]) {
-    return res.status(404).json({
-      success: false,
-      error: 'Kunde nicht gefunden'
-    });
-  }
-  
-  // Prüfen, ob die am_id bereits für diesen Kunden existiert
-  if (customerMap[kundenname].redirects[amId]) {
-    return res.json({
-      success: false,
-      code: amId,
-      error: 'Weiterleitung mit dieser am_id existiert bereits'
-    });
-  }
-  
-  // Überprüfen, ob die Kombination aus Empfehlungsgeber und am_id bereits existiert
-  for (const existingCode in customerMap[kundenname].redirects) {
-    const redirect = customerMap[kundenname].redirects[existingCode];
-    if (redirect.am_id === amId && redirect.empfehlungsgeber === name) {
-      return res.json({
+  db.get("SELECT id FROM customers WHERE id = ?", [kundenname], (err, row) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
         success: false,
-        code: existingCode,
-        error: 'Kombination aus Empfehlungsgeber und am_id existiert bereits'
+        error: 'Datenbankfehler'
       });
     }
-  }
-  
-  // Code (am_id) zur Map hinzufügen
-  customerMap[kundenname].redirects[amId] = {
-    am_id: amId,
-    empfehlungsgeber: name,
-    createdAt: new Date().toISOString(), // Erstellungsdatum
-    updatedAt: new Date().toISOString(), // Letztes Update
-    count: 0 // Anzahl der Aufrufe
-  };
-  
-  // Änderungen speichern
-  const saved = saveCustomerMap();
-  
-  // Vollständige URL zurückgeben
-  const fullUrl = `${req.protocol}://${req.get('host')}/${kundenname}/${amId}`;
-  
-  res.json({
-    success: saved,
-    customer: kundenname,
-    code: amId,
-    redirectUrl: fullUrl
+
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: 'Kunde nicht gefunden'
+      });
+    }
+
+    // Prüfen, ob die am_id bereits für diesen Kunden existiert
+    db.get("SELECT code FROM redirects WHERE customer_id = ? AND code = ?", 
+      [kundenname, amId], 
+      (err, row) => {
+        if (err) {
+          console.error('Datenbankfehler:', err.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Datenbankfehler'
+          });
+        }
+
+        if (row) {
+          return res.json({
+            success: false,
+            code: amId,
+            error: 'Weiterleitung mit dieser am_id existiert bereits'
+          });
+        }
+
+        // Überprüfen, ob die Kombination aus Empfehlungsgeber und am_id bereits existiert
+        db.get(
+          "SELECT code FROM redirects WHERE customer_id = ? AND am_id = ? AND empfehlungsgeber = ?", 
+          [kundenname, amId, name], 
+          (err, row) => {
+            if (err) {
+              console.error('Datenbankfehler:', err.message);
+              return res.status(500).json({
+                success: false,
+                error: 'Datenbankfehler'
+              });
+            }
+
+            if (row) {
+              return res.json({
+                success: false,
+                code: row.code,
+                error: 'Kombination aus Empfehlungsgeber und am_id existiert bereits'
+              });
+            }
+
+            // Code (am_id) zur Datenbank hinzufügen
+            db.run(
+              `INSERT INTO redirects (code, customer_id, am_id, empfehlungsgeber, createdAt, updatedAt, count) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+              [amId, kundenname, amId, name, now, now, 0], 
+              function(err) {
+                if (err) {
+                  console.error('Fehler beim Erstellen der Weiterleitung:', err.message);
+                  return res.status(500).json({
+                    success: false,
+                    error: 'Fehler beim Erstellen der Weiterleitung'
+                  });
+                }
+
+                // Vollständige URL zurückgeben
+                const fullUrl = `${req.protocol}://${req.get('host')}/${kundenname}/${amId}`;
+
+                res.json({
+                  success: true,
+                  customer: kundenname,
+                  code: amId,
+                  redirectUrl: fullUrl
+                });
+              }
+            );
+          }
+        );
+      }
+    );
   });
 });
 
 // Admin-Route zum Anzeigen aller Kunden - mit Token-Schutz
 app.get('/admin/customer/list', verifyAdminToken, (req, res) => {
-  res.json({
-    count: Object.keys(customerMap).length,
-    customers: customerMap
+  db.all("SELECT id, formId, createdAt FROM customers", [], (err, customers) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Datenbankfehler'
+      });
+    }
+
+    // Für jeden Kunden die Weiterleitungen abfragen
+    const customerMap = {};
+    let pendingCustomers = customers.length;
+
+    if (pendingCustomers === 0) {
+      return res.json({
+        count: 0,
+        customers: {}
+      });
+    }
+
+    customers.forEach(customer => {
+      db.all(
+        "SELECT code, am_id, empfehlungsgeber, createdAt, updatedAt, count FROM redirects WHERE customer_id = ?", 
+        [customer.id], 
+        (err, redirects) => {
+          if (err) {
+            console.error('Datenbankfehler:', err.message);
+            pendingCustomers = 0;
+            return res.status(500).json({
+              success: false,
+              error: 'Datenbankfehler'
+            });
+          }
+
+          // Kundenobjekt erstellen
+          customerMap[customer.id] = {
+            formId: customer.formId,
+            redirects: {}
+          };
+
+          // Weiterleitungen zum Kunden hinzufügen
+          redirects.forEach(redirect => {
+            customerMap[customer.id].redirects[redirect.code] = {
+              am_id: redirect.am_id,
+              empfehlungsgeber: redirect.empfehlungsgeber,
+              createdAt: redirect.createdAt,
+              updatedAt: redirect.updatedAt,
+              count: redirect.count
+            };
+          });
+
+          pendingCustomers--;
+          
+          // Wenn alle Kunden verarbeitet wurden, Antwort senden
+          if (pendingCustomers === 0) {
+            res.json({
+              count: customers.length,
+              customers: customerMap
+            });
+          }
+        }
+      );
+    });
   });
 });
 
 // Admin-Route zum Anzeigen eines bestimmten Kunden - mit Token-Schutz
 app.get('/admin/customer/:kundenname', verifyAdminToken, (req, res) => {
   const kundenname = req.params.kundenname;
-  
-  if (customerMap[kundenname]) {
-    res.json({
-      customer: kundenname,
-      details: customerMap[kundenname]
-    });
-  } else {
-    res.status(404).json({
-      success: false,
-      error: 'Kunde nicht gefunden'
-    });
-  }
+
+  db.get("SELECT id, formId, createdAt FROM customers WHERE id = ?", [kundenname], (err, customer) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Datenbankfehler'
+      });
+    }
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Kunde nicht gefunden'
+      });
+    }
+
+    // Weiterleitungen des Kunden abfragen
+    db.all(
+      "SELECT code, am_id, empfehlungsgeber, createdAt, updatedAt, count FROM redirects WHERE customer_id = ?", 
+      [kundenname], 
+      (err, redirects) => {
+        if (err) {
+          console.error('Datenbankfehler:', err.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Datenbankfehler'
+          });
+        }
+
+        // Kundenobjekt erstellen
+        const customerObj = {
+          formId: customer.formId,
+          redirects: {}
+        };
+
+        // Weiterleitungen zum Kunden hinzufügen
+        redirects.forEach(redirect => {
+          customerObj.redirects[redirect.code] = {
+            am_id: redirect.am_id,
+            empfehlungsgeber: redirect.empfehlungsgeber,
+            createdAt: redirect.createdAt,
+            updatedAt: redirect.updatedAt,
+            count: redirect.count
+          };
+        });
+
+        res.json({
+          customer: kundenname,
+          details: customerObj
+        });
+      }
+    );
+  });
 });
 
 // Admin-Route zum Löschen eines Kunden - mit Token-Schutz
 app.get('/admin/customer/:kundenname/delete', verifyAdminToken, (req, res) => {
   const kundenname = req.params.kundenname;
-  
-  if (customerMap[kundenname]) {
-    const deleted = customerMap[kundenname];
-    delete customerMap[kundenname];
-    
-    // Änderungen speichern
-    const saved = saveCustomerMap();
-    
-    res.json({
-      success: saved,
-      deleted: {
-        customer: kundenname,
-        details: deleted
+
+  // Zuerst Kundeninformationen abrufen
+  db.get("SELECT id, formId FROM customers WHERE id = ?", [kundenname], (err, customer) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Datenbankfehler'
+      });
+    }
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Kunde nicht gefunden'
+      });
+    }
+
+    // Weiterleitungen des Kunden abrufen
+    db.all(
+      "SELECT code, am_id, empfehlungsgeber, createdAt, updatedAt, count FROM redirects WHERE customer_id = ?", 
+      [kundenname], 
+      (err, redirects) => {
+        if (err) {
+          console.error('Datenbankfehler:', err.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Datenbankfehler'
+          });
+        }
+
+        // Kundenobjekt für die Antwort erstellen
+        const customerObj = {
+          formId: customer.formId,
+          redirects: {}
+        };
+
+        // Weiterleitungen zum Kunden hinzufügen
+        redirects.forEach(redirect => {
+          customerObj.redirects[redirect.code] = {
+            am_id: redirect.am_id,
+            empfehlungsgeber: redirect.empfehlungsgeber,
+            createdAt: redirect.createdAt,
+            updatedAt: redirect.updatedAt,
+            count: redirect.count
+          };
+        });
+
+        // Kunden und alle zugehörigen Weiterleitungen löschen
+        db.run("DELETE FROM customers WHERE id = ?", [kundenname], function(err) {
+          if (err) {
+            console.error('Fehler beim Löschen des Kunden:', err.message);
+            return res.status(500).json({
+              success: false,
+              error: 'Fehler beim Löschen des Kunden'
+            });
+          }
+
+          res.json({
+            success: true,
+            deleted: {
+              customer: kundenname,
+              details: customerObj
+            }
+          });
+        });
       }
-    });
-  } else {
-    res.status(404).json({
-      success: false,
-      error: 'Kunde nicht gefunden'
-    });
-  }
+    );
+  });
 });
 
 // Admin-Route zum Löschen einer Weiterleitung bei einem Kunden - mit Token-Schutz
 app.get('/admin/customer/:kundenname/delete/:code', verifyAdminToken, (req, res) => {
   const kundenname = req.params.kundenname;
   const code = req.params.code;
-  
-  if (!customerMap[kundenname]) {
-    return res.status(404).json({
-      success: false,
-      error: 'Kunde nicht gefunden'
-    });
-  }
-  
-  if (customerMap[kundenname].redirects[code]) {
-    const deleted = customerMap[kundenname].redirects[code];
-    delete customerMap[kundenname].redirects[code];
-    
-    // Änderungen speichern
-    const saved = saveCustomerMap();
-    
-    res.json({
-      success: saved,
-      deleted: {
-        customer: kundenname,
-        code: code,
-        details: deleted
+
+  // Prüfen, ob der Kunde existiert
+  db.get("SELECT id FROM customers WHERE id = ?", [kundenname], (err, customer) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Datenbankfehler'
+      });
+    }
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Kunde nicht gefunden'
+      });
+    }
+
+    // Weiterleitungsdetails abrufen
+    db.get(
+      "SELECT code, am_id, empfehlungsgeber, createdAt, updatedAt, count FROM redirects WHERE customer_id = ? AND code = ?", 
+      [kundenname, code], 
+      (err, redirect) => {
+        if (err) {
+          console.error('Datenbankfehler:', err.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Datenbankfehler'
+          });
+        }
+
+        if (!redirect) {
+          return res.status(404).json({
+            success: false,
+            error: 'Code nicht gefunden'
+          });
+        }
+
+        // Weiterleitungsobjekt für die Antwort erstellen
+        const redirectObj = {
+          am_id: redirect.am_id,
+          empfehlungsgeber: redirect.empfehlungsgeber,
+          createdAt: redirect.createdAt,
+          updatedAt: redirect.updatedAt,
+          count: redirect.count
+        };
+
+        // Weiterleitung löschen
+        db.run(
+          "DELETE FROM redirects WHERE customer_id = ? AND code = ?", 
+          [kundenname, code], 
+          function(err) {
+            if (err) {
+              console.error('Fehler beim Löschen der Weiterleitung:', err.message);
+              return res.status(500).json({
+                success: false,
+                error: 'Fehler beim Löschen der Weiterleitung'
+              });
+            }
+
+            res.json({
+              success: true,
+              deleted: {
+                customer: kundenname,
+                code: code,
+                details: redirectObj
+              }
+            });
+          }
+        );
       }
-    });
-  } else {
-    res.status(404).json({
-      success: false,
-      error: 'Code nicht gefunden'
-    });
-  }
+    );
+  });
 });
 
 // Route zum Anzeigen der Details einer bestimmten Weiterleitung
@@ -287,32 +578,65 @@ app.get('/admin/customer/:kundenname/redirect/:am_id', verifyAdminToken, (req, r
   const amId = req.params.am_id;
 
   // Prüfen, ob der Kunde existiert
-  if (!customerMap[kundenname]) {
-    return res.status(404).json({
-      success: false,
-      error: 'Kunde nicht gefunden'
-    });
-  }
+  db.get("SELECT id FROM customers WHERE id = ?", [kundenname], (err, customer) => {
+    if (err) {
+      console.error('Datenbankfehler:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Datenbankfehler'
+      });
+    }
 
-  // Prüfen, ob die Weiterleitung existiert
-  if (customerMap[kundenname].redirects[amId]) {
-    const redirect = customerMap[kundenname].redirects[amId];
-    return res.json({
-      success: true,
-      redirect: {
-        am_id: redirect.am_id,
-        empfehlungsgeber: redirect.empfehlungsgeber,
-        createdAt: redirect.createdAt,
-        updatedAt: redirect.updatedAt,
-        count: redirect.count
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Kunde nicht gefunden'
+      });
+    }
+
+    // Weiterleitungsdetails abrufen
+    db.get(
+      "SELECT code, am_id, empfehlungsgeber, createdAt, updatedAt, count FROM redirects WHERE customer_id = ? AND code = ?", 
+      [kundenname, amId], 
+      (err, redirect) => {
+        if (err) {
+          console.error('Datenbankfehler:', err.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Datenbankfehler'
+          });
+        }
+
+        if (!redirect) {
+          return res.status(404).json({
+            success: false,
+            error: 'Weiterleitung nicht gefunden'
+          });
+        }
+
+        res.json({
+          success: true,
+          redirect: {
+            am_id: redirect.am_id,
+            empfehlungsgeber: redirect.empfehlungsgeber,
+            createdAt: redirect.createdAt,
+            updatedAt: redirect.updatedAt,
+            count: redirect.count
+          }
+        });
       }
-    });
-  }
+    );
+  });
+});
 
-  // Weiterleitung nicht gefunden
-  res.status(404).json({
-    success: false,
-    error: 'Weiterleitung nicht gefunden'
+// Schließe die Datenbank, wenn der Server heruntergefahren wird
+process.on('SIGINT', () => {
+  db.close((err) => {
+    if (err) {
+      console.error(err.message);
+    }
+    console.log('Datenbankverbindung geschlossen');
+    process.exit(0);
   });
 });
 
