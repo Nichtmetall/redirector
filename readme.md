@@ -1,82 +1,79 @@
-# URL-Redirector
+# URL-Weiterleitungsservice
 
-## Übersicht
-Dieser Service ermöglicht die Verwaltung von URL-Weiterleitungen für verschiedene Kunden. Jeder Kunde kann mehrere Weiterleitungen haben, die durch einen Code identifiziert werden.
+Dieser Service ermöglicht die Weiterleitung von benutzerdefinierten URLs zu LeadConnector-Formularen mit vordefinierten Parametern.
 
-## Installation
-1. Klone das Repository:
-   ```bash
-   git clone <repository-url>
-   ```
-2. Installiere die Abhängigkeiten:
+## Funktionen
+
+- Einfache URL-Weiterleitungen (z.B. `/kundenname/code` -> LeadConnector-Formular)
+- Zählen und Verfolgen von Weiterleitungen
+- Admin-Bereich zur Verwaltung von Kunden und Weiterleitungen
+- Token-basierte Authentifizierung für den Admin-Bereich
+
+## Technologien
+
+- Next.js (App Router)
+- Prisma ORM mit SQLite-Datenbank
+- TailwindCSS + shadcn/ui für die Benutzeroberfläche
+- TypeScript
+
+## Installation und Einrichtung
+
+1. Repository klonen
+2. Abhängigkeiten installieren:
    ```bash
    npm install
    ```
-
-3. Erstelle eine `.env`-Datei und füge deinen Admin-Token hinzu:
-   ```plaintext
-   NODE_ENV=production
-   PORT=3000
-   ADMIN_TOKEN=dein-admin-token
+3. Umgebungsvariablen konfigurieren (`.env` Datei erstellen):
+   ```
+   DATABASE_URL="file:./dev.db"
+   ADMIN_TOKEN="dein-geheimes-admin-token"
+   ```
+4. Datenbank initialisieren:
+   ```bash
+   npx prisma migrate dev --name init
+   ```
+5. Anwendung starten:
+   ```bash
+   npm run dev
    ```
 
-## Nutzung
-### Starten des Servers
-Um den Server zu starten, führe den folgenden Befehl aus:
-```bash
-npm start
+## Verwendung
+
+### Admin-Bereich
+
+Zugriff auf den Admin-Bereich über:
+
 ```
-Der Server läuft standardmäßig auf Port 3000.
+http://localhost:3000/admin?token=dein-geheimes-admin-token
+```
 
-### API-Endpunkte
+Im Admin-Bereich können Sie:
 
-#### Kundenverwaltung
-- **Kunden erstellen**
-  - `GET /admin/customer/create/:kundenname/:formId`
-  - Erstellt einen neuen Kunden mit einer angegebenen `formId`.
+- Kunden anlegen und verwalten
+- Weiterleitungen erstellen und löschen
+- Statistiken zu den Weiterleitungen einsehen
 
-- **Kunden auflisten**
-  - `GET /admin/customer/list`
-  - Listet alle Kunden auf.
+### Weiterleitungen nutzen
 
-- **Kunden anzeigen**
-  - `GET /admin/customer/:kundenname`
-  - Zeigt die Details eines bestimmten Kunden an.
+Sobald Kunden und Weiterleitungen angelegt sind, können Sie die Weiterleitungen über folgende URL aufrufen:
 
-- **Kunden löschen**
-  - `GET /admin/customer/:kundenname/delete`
-  - Löscht einen bestimmten Kunden.
+```
+http://localhost:3000/[kundenname]/[code]
+```
 
-#### Weiterleitungen
-- **Weiterleitung erstellen**
-  - `GET /admin/customer/:kundenname/create/:name/:am_id`
-  - Erstellt eine neue Weiterleitung für einen bestimmten Kunden.
+Die Benutzer werden automatisch zum konfigurierten LeadConnector-Formular weitergeleitet, wobei die Parameter `am_id` und `empfehlungsgeber` entsprechend der Konfiguration gesetzt werden.
 
-- **Weiterleitung aufrufen**
-  - `GET /:kundenname/:code`
-  - Leitet zu der entsprechenden URL weiter, wenn der Kunde und der Code existieren.
+## Produktionsumgebung
 
-- **Weiterleitung löschen**
-  - `GET /admin/customer/:kundenname/delete/:code`
-  - Löscht eine bestimmte Weiterleitung für einen Kunden.
+Für die Produktionsumgebung:
 
-## Datenstruktur
-Die Weiterleitungsdaten werden in einer SQLite-Datenbank (`redirects.db`) gespeichert. Die Datenbank enthält folgende Tabellen:
+1. Build erstellen:
+   ```bash
+   npm run build
+   ```
+2. Anwendung starten:
+   ```bash
+   npm start
+   ```
 
-### Tabelle: customers
-- `id` (TEXT): Primärschlüssel, eindeutiger Identifier für den Kunden
-- `formId` (TEXT): ID des Formulars für die Weiterleitung
-- `createdAt` (TEXT): Erstellungszeitpunkt des Kunden
-
-### Tabelle: redirects
-- `code` (TEXT): Code für die Weiterleitung (Teil des Primärschlüssels)
-- `customer_id` (TEXT): Zugehöriger Kunde (Teil des Primärschlüssels, Fremdschlüssel)
-- `am_id` (TEXT): ID für die Weiterleitung
-- `empfehlungsgeber` (TEXT): Name des Empfehlungsgebers
-- `createdAt` (TEXT): Erstellungszeitpunkt der Weiterleitung
-- `updatedAt` (TEXT): Zeitpunkt der letzten Aktualisierung
-- `count` (INTEGER): Anzahl der Aufrufe der Weiterleitung
-
-## Hinweise
-- Der Admin-Bereich ist durch einen Token geschützt, der in der `.env`-Datei definiert ist.
-- Bei der ersten Ausführung wird automatisch ein Beispielkunde mit einer Beispiel-Weiterleitung angelegt.
+Es wird empfohlen, in der Produktionsumgebung eine robustere Datenbanklösung anstelle von SQLite zu verwenden (z.B. PostgreSQL). Dazu die Prisma-Konfiguration in `prisma/schema.prisma` anpassen und die Umgebungsvariablen entsprechend setzen.
