@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/db';
-import { headers } from 'next/headers';
 import { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
@@ -62,9 +61,9 @@ export async function generateMetadata({
 }
 
 export default async function RedirectPage({
-    params
+    params,
 }: {
-    params: { kundenname: string; code: string };
+    params: { kundenname: string; code: string; }
 }) {
     const { kundenname, code } = params;
     // Hier ist code jetzt der am_id-Wert aus der URL

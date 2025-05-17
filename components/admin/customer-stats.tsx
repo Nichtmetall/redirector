@@ -58,7 +58,7 @@ export function CustomerStats({ redirects }: CustomerStatsProps) {
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {topRedirects.map((redirect, index) => (
+                        {topRedirects.map((redirect) => (
                             <div key={redirect.code} className="flex items-center justify-between">
                                 <div>
                                     <p className="font-medium">{redirect.empfehlungsgeber}</p>
