@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     if (authError) return authError;
 
     try {
+        console.log('Versuche Verbindung zur Datenbank herzustellen...');
         const customers = await prisma.customer.findMany({
             include: {
                 _count: {
@@ -21,10 +22,16 @@ export async function GET(request: NextRequest) {
                 createdAt: 'desc',
             },
         });
+        console.log('Kunden erfolgreich abgerufen:', customers.length);
 
         return NextResponse.json(customers);
     } catch (error) {
-        console.error('Fehler beim Abrufen der Kunden:', error);
+        console.error('Detaillierter Fehler beim Abrufen der Kunden:', {
+            error,
+            message: error instanceof Error ? error.message : 'Unbekannter Fehler',
+            stack: error instanceof Error ? error.stack : undefined,
+            databaseUrl: process.env.DATABASE_URL ? 'Gesetzt' : 'Nicht gesetzt'
+        });
         return errorResponse('Fehler beim Abrufen der Kunden', 500);
     }
 }
