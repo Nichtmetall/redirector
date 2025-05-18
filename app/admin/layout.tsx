@@ -14,20 +14,25 @@ export default function AdminLayout({
     const router = useRouter();
     const pathname = usePathname();
     const [token, setToken] = useState('');
+    const isLoginPage = pathname === '/admin/login';
 
     useEffect(() => {
         const storedToken = localStorage.getItem('adminToken');
-        if (!storedToken) {
+        if (!storedToken && !isLoginPage) {
             router.push('/admin/login');
             return;
         }
-        setToken(storedToken);
-    }, [router]);
+        setToken(storedToken || '');
+    }, [router, isLoginPage]);
 
     const handleLogout = () => {
         localStorage.removeItem('adminToken');
         router.push('/admin/login');
     };
+
+    if (isLoginPage) {
+        return <>{children}</>;
+    }
 
     if (!token) {
         return null;
