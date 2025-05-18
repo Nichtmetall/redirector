@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function checkAdminToken(request: NextRequest) {
+    // Prüfe zuerst den Authorization-Header
     const authHeader = request.headers.get('Authorization');
+    let token;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json(
-            { error: "Nicht autorisiert" },
-            { status: 401 }
-        );
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+    } else {
+        // Falls kein Authorization-Header vorhanden, prüfe den Query-Parameter
+        const url = new URL(request.url);
+        token = url.searchParams.get('token');
     }
-
-    const token = authHeader.split(' ')[1];
 
     if (!token || token !== process.env.ADMIN_TOKEN) {
         return NextResponse.json(
