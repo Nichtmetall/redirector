@@ -15,8 +15,8 @@ export async function DELETE(
         // Prüfen, ob Weiterleitung existiert über den internen code-Parameter
         const redirect = await prisma.redirect.findUnique({
             where: {
-                code_customerId: {
-                    code: params.code,
+                am_id_customerId: {
+                    am_id: params.code,
                     customerId: params.kundenname,
                 },
             },
@@ -29,8 +29,8 @@ export async function DELETE(
         // Weiterleitung löschen
         await prisma.redirect.delete({
             where: {
-                code_customerId: {
-                    code: params.code,
+                am_id_customerId: {
+                    am_id: params.code,
                     customerId: params.kundenname,
                 },
             },

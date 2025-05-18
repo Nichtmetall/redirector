@@ -37,8 +37,8 @@ export async function generateMetadata({
         // Erhöhe den Counter und aktualisiere das updatedAt-Feld
         await prisma.redirect.update({
             where: {
-                code_customerId: {
-                    code: redirectData.code, // Hier den internen code verwenden
+                am_id_customerId: {
+                    am_id: code,
                     customerId: kundenname,
                 },
             },

@@ -1,5 +1,6 @@
 import { CustomerDetailClient } from './client';
 
-export default function CustomerDetailPage({ params }: { params: { id: string } }) {
-    return <CustomerDetailClient id={params.id} />;
+export default async function CustomerDetailPage({ params }: { params: { id: string } }) {
+    const id = await Promise.resolve(params.id);
+    return <CustomerDetailClient id={id} />;
 } 

@@ -7,7 +7,8 @@ export async function GET(
     request: NextRequest,
     { params }: { params: { kundenname: string; code: string } }
 ) {
-    const { kundenname, code } = params;
+    const paramsResolved = await Promise.resolve(params);
+    const { kundenname, code } = paramsResolved;
 
     try {
         // Suche den Kunden
@@ -24,11 +25,13 @@ export async function GET(
             );
         }
 
-        // Suche die Weiterleitung anhand der am_id (nicht mehr über code)
-        const redirect = await prisma.redirect.findFirst({
+        // Suche die Weiterleitung anhand der am_id
+        const redirect = await prisma.redirect.findUnique({
             where: {
-                am_id: code,
-                customerId: kundenname,
+                am_id_customerId: {
+                    am_id: code,
+                    customerId: kundenname,
+                },
             },
         });
 
@@ -42,8 +45,8 @@ export async function GET(
         // Erhöhe den Counter und aktualisiere das updatedAt-Feld
         await prisma.redirect.update({
             where: {
-                code_customerId: {
-                    code: redirect.code,
+                am_id_customerId: {
+                    am_id: code,
                     customerId: kundenname,
                 },
             },
@@ -54,7 +57,7 @@ export async function GET(
             },
         });
 
-        // Konstruiere die Ziel-URL - hier verwenden wir den code-Parameter (am_id) direkt
+        // Konstruiere die Ziel-URL
         const targetUrl = new URL(`https://api.leadconnectorhq.com/widget/form/${customer.formId}`);
         targetUrl.searchParams.append('am_id', code);
         targetUrl.searchParams.append('empfehlungsgeber', redirect.empfehlungsgeber);

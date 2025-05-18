@@ -7,6 +7,8 @@ export async function GET(
     request: NextRequest,
     { params }: { params: { id: string } }
 ) {
+    const id = await Promise.resolve(params.id);
+
     // Admin-Token überprüfen
     const authError = await checkAdminToken(request);
     if (authError) return authError;
@@ -14,7 +16,7 @@ export async function GET(
     try {
         const customer = await prisma.customer.findUnique({
             where: {
-                id: params.id,
+                id,
             },
             include: {
                 redirects: {

@@ -12,8 +12,8 @@ export async function POST(request: NextRequest) {
         const data = await request.json();
 
         // Validierung
-        if (!data.code || !data.customerId || !data.am_id || !data.empfehlungsgeber) {
-            return errorResponse('Alle Felder (code, customerId, am_id, empfehlungsgeber) sind erforderlich');
+        if (!data.customerId || !data.am_id || !data.empfehlungsgeber) {
+            return errorResponse('Alle Felder (customerId, am_id, empfehlungsgeber) sind erforderlich');
         }
 
         // Prüfen, ob Kunde existiert
@@ -27,36 +27,23 @@ export async function POST(request: NextRequest) {
             return errorResponse('Kunde nicht gefunden', 404);
         }
 
-        // Prüfen, ob Weiterleitung bereits existiert (anhand des internen Codes)
-        const existingRedirectByCode = await prisma.redirect.findUnique({
+        // Prüfen, ob Weiterleitung mit dieser am_id bereits existiert
+        const existingRedirect = await prisma.redirect.findUnique({
             where: {
-                code_customerId: {
-                    code: data.code,
+                am_id_customerId: {
+                    am_id: data.am_id,
                     customerId: data.customerId,
                 },
             },
         });
 
-        if (existingRedirectByCode) {
-            return errorResponse('Weiterleitung mit diesem internen Code existiert bereits für diesen Kunden');
-        }
-
-        // Prüfen, ob Weiterleitung mit dieser am_id bereits existiert
-        const existingRedirectByAmId = await prisma.redirect.findFirst({
-            where: {
-                am_id: data.am_id,
-                customerId: data.customerId,
-            },
-        });
-
-        if (existingRedirectByAmId) {
+        if (existingRedirect) {
             return errorResponse('Weiterleitung mit dieser AM ID existiert bereits für diesen Kunden');
         }
 
         // Neue Weiterleitung erstellen
         const redirect = await prisma.redirect.create({
             data: {
-                code: data.code,
                 customerId: data.customerId,
                 am_id: data.am_id,
                 empfehlungsgeber: data.empfehlungsgeber,

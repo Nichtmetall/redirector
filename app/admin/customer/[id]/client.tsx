@@ -12,6 +12,10 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { CustomerStats } from '@/components/admin/customer-stats';
 import { Badge } from '@/components/ui/badge';
+import { CustomerStatsSkeleton } from '@/components/admin/customer-stats-skeleton';
+import { CustomerTableSkeleton } from '@/components/admin/customer-table-skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AdminPageLayout } from '../../components/admin-page-layout';
 
 // Typdefinitionen
 type Customer = {
@@ -22,9 +26,8 @@ type Customer = {
 };
 
 type Redirect = {
-    code: string;
-    customerId: string;
     am_id: string;
+    customerId: string;
     empfehlungsgeber: string;
     createdAt: string;
     updatedAt: string;
@@ -101,7 +104,7 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
     }, [id, token, router]);
 
     // Weiterleitung löschen
-    const deleteRedirect = async (code: string) => {
+    const deleteRedirect = async (am_id: string) => {
         if (!customer) return;
 
         if (!confirm('Möchten Sie diese Weiterleitung wirklich löschen?')) {
@@ -109,7 +112,7 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
         }
 
         try {
-            const response = await fetch(`/api/admin/redirect/${customer.id}/${code}`, {
+            const response = await fetch(`/api/admin/redirect/${customer.id}/${am_id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -152,9 +155,6 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
         setFormSubmitting(true);
 
         try {
-            // Generiere einen eindeutigen Code basierend auf der am_id
-            const code = `${am_id}-${Date.now()}`;
-
             const response = await fetch('/api/admin/redirect', {
                 method: 'POST',
                 headers: {
@@ -163,7 +163,6 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
                 },
                 body: JSON.stringify({
                     customerId: customer.id,
-                    code,
                     am_id,
                     empfehlungsgeber
                 }),
@@ -263,23 +262,59 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
         return null; // Sollte zur Admin-Seite weitergeleitet werden
     }
 
-    return (
-        <div className="container mx-auto py-8 px-4">
-            <div className="flex justify-between items-start mb-6">
-                <div className="space-y-2">
-                    <Button variant="outline" asChild className="mb-2">
-                        <Link href="/admin">&larr; Zurück zum Dashboard</Link>
-                    </Button>
-                    <h1 className="text-3xl font-bold">Kundendetails</h1>
-                    {!loading && customer && (
-                        <p className="text-muted-foreground">
-                            Verwalten Sie die Details und Weiterleitungen für {customer.id}
-                        </p>
-                    )}
+    if (loading) {
+        return (
+            <AdminPageLayout
+                title="Kunde wird geladen..."
+                subtitle="Die Kundeninformationen werden geladen"
+            >
+                <div className="space-y-6">
+                    <CustomerStatsSkeleton />
+                    <Card>
+                        <CardHeader>
+                            <CardTitle><Skeleton className="h-6 w-40" /></CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <CustomerTableSkeleton />
+                        </CardContent>
+                    </Card>
                 </div>
+            </AdminPageLayout>
+        );
+    }
 
-                {!loading && customer && (
-                    <div className="flex gap-2">
+    if (!customer) {
+        return (
+            <AdminPageLayout
+                title="Kunde nicht gefunden"
+                subtitle="Der gesuchte Kunde existiert nicht oder Sie haben keine Berechtigung"
+            >
+                <div className="space-y-6">
+                    <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-10">
+                            <p className="text-muted-foreground mb-4">Keine Kundendaten verfügbar</p>
+                            <Button onClick={() => router.push('/admin')}>
+                                Zurück zur Übersicht
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            </AdminPageLayout>
+        );
+    }
+
+    return (
+        <AdminPageLayout
+            title={'Kundendetails'}
+            subtitle={`Kundendetails und Weiterleitungen - Erstellt am ${new Date(customer.createdAt).toLocaleDateString()}`}
+        >
+            <div className="space-y-6">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>Kundeninformationen</CardTitle>
+                            <CardDescription>Details zum Kunden {customer.id}</CardDescription>
+                        </div>
                         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="outline">Kunde bearbeiten</Button>
@@ -315,10 +350,36 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
                                 </form>
                             </DialogContent>
                         </Dialog>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                            <div className="space-y-1">
+                                <p className="text-sm text-muted-foreground">Kunden-ID</p>
+                                <p className="font-medium">{customer.id}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-sm text-muted-foreground">Form-ID</p>
+                                <p className="font-medium">{customer.formId}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-sm text-muted-foreground">Erstellt am</p>
+                                <p className="font-medium">{new Date(customer.createdAt).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
+                <CustomerStats redirects={customer.redirects} />
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>Weiterleitungen</CardTitle>
+                            <CardDescription>Alle Weiterleitungen für diesen Kunden</CardDescription>
+                        </div>
                         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                             <DialogTrigger asChild>
-                                <Button>Neue Weiterleitung erstellen</Button>
+                                <Button>Neue Weiterleitung</Button>
                             </DialogTrigger>
                             <DialogContent>
                                 <DialogHeader>
@@ -362,156 +423,65 @@ export function CustomerDetailClient({ id }: CustomerDetailClientProps) {
                                 </form>
                             </DialogContent>
                         </Dialog>
-                    </div>
-                )}
-            </div>
-
-            {loading ? (
-                <p>Laden...</p>
-            ) : !customer ? (
-                <p>Kunde nicht gefunden.</p>
-            ) : (
-                <div className="space-y-8">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Kundeninformationen</CardTitle>
-                            <CardDescription>Details zum Kunden {customer.id}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                                <div className="space-y-1">
-                                    <p className="text-sm text-muted-foreground">Kunden-ID</p>
-                                    <p className="font-medium">{customer.id}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-sm text-muted-foreground">Form-ID</p>
-                                    <p className="font-medium">{customer.formId}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-sm text-muted-foreground">Erstellt am</p>
-                                    <p className="font-medium">{new Date(customer.createdAt).toLocaleDateString()}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-sm text-muted-foreground">Status</p>
-                                    <Badge variant={customer.redirects.length > 0 ? "success" : "secondary"}>
-                                        {customer.redirects.length > 0 ? 'Aktiv' : 'Inaktiv'}
-                                    </Badge>
-                                </div>
+                    </CardHeader>
+                    <CardContent>
+                        {customer.redirects.length === 0 ? (
+                            <div className="text-center py-6">
+                                <p className="text-muted-foreground mb-4">Keine Weiterleitungen gefunden.</p>
+                                <Button onClick={() => setIsCreateDialogOpen(true)}>
+                                    Erste Weiterleitung erstellen
+                                </Button>
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    <CustomerStats redirects={customer.redirects} />
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Weiterleitungen</CardTitle>
-                            <CardDescription>
-                                Alle Weiterleitungen für diesen Kunden
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {customer.redirects.length === 0 ? (
-                                <div className="text-center py-6">
-                                    <p className="text-muted-foreground mb-4">Keine Weiterleitungen gefunden.</p>
-                                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button>Erste Weiterleitung erstellen</Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle>Neue Weiterleitung erstellen</DialogTitle>
-                                                <DialogDescription>
-                                                    Erstellen Sie eine neue Weiterleitung für den Kunden {customer.id}.
-                                                </DialogDescription>
-                                            </DialogHeader>
-
-                                            <form onSubmit={createRedirect} className="space-y-4 mt-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="am_id">AM ID</Label>
-                                                    <Input
-                                                        id="am_id"
-                                                        value={am_id}
-                                                        onChange={(e) => setAmId(e.target.value)}
-                                                        placeholder="z.B. 12345"
-                                                        disabled={formSubmitting}
-                                                    />
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Die AM ID wird als Code in der Weiterleitungs-URL verwendet.
-                                                    </p>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="empfehlungsgeber">Empfehlungsgeber</Label>
-                                                    <Input
-                                                        id="empfehlungsgeber"
-                                                        value={empfehlungsgeber}
-                                                        onChange={(e) => setEmpfehlungsgeber(e.target.value)}
-                                                        placeholder="z.B. Max Mustermann"
-                                                        disabled={formSubmitting}
-                                                    />
-                                                </div>
-
-                                                <div className="flex justify-end pt-2">
-                                                    <Button type="submit" disabled={formSubmitting}>
-                                                        {formSubmitting ? 'Wird erstellt...' : 'Weiterleitung erstellen'}
-                                                    </Button>
-                                                </div>
-                                            </form>
-                                        </DialogContent>
-                                    </Dialog>
-                                </div>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>AM ID</TableHead>
-                                            <TableHead>Empfehlungsgeber</TableHead>
-                                            <TableHead>Erstellt am</TableHead>
-                                            <TableHead>Zuletzt verwendet</TableHead>
-                                            <TableHead>Aufrufe</TableHead>
-                                            <TableHead>URL</TableHead>
-                                            <TableHead>Aktionen</TableHead>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>AM ID</TableHead>
+                                        <TableHead>Empfehlungsgeber</TableHead>
+                                        <TableHead>Erstellt am</TableHead>
+                                        <TableHead>Zuletzt verwendet</TableHead>
+                                        <TableHead>Aufrufe</TableHead>
+                                        <TableHead>URL</TableHead>
+                                        <TableHead>Aktionen</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {customer.redirects.map((redirect) => (
+                                        <TableRow key={redirect.am_id}>
+                                            <TableCell>{redirect.am_id}</TableCell>
+                                            <TableCell>{redirect.empfehlungsgeber}</TableCell>
+                                            <TableCell>{new Date(redirect.createdAt).toLocaleDateString()}</TableCell>
+                                            <TableCell>{new Date(redirect.updatedAt).toLocaleDateString()}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline">{redirect.count}</Badge>
+                                            </TableCell>
+                                            <TableCell className="max-w-[200px] truncate">
+                                                <a
+                                                    href={`/${customer.id}/${redirect.am_id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-500 hover:underline"
+                                                >
+                                                    /{customer.id}/{redirect.am_id}
+                                                </a>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={() => deleteRedirect(redirect.am_id)}
+                                                >
+                                                    Löschen
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {customer.redirects.map((redirect) => (
-                                            <TableRow key={redirect.code}>
-                                                <TableCell>{redirect.am_id}</TableCell>
-                                                <TableCell>{redirect.empfehlungsgeber}</TableCell>
-                                                <TableCell>{new Date(redirect.createdAt).toLocaleDateString()}</TableCell>
-                                                <TableCell>{new Date(redirect.updatedAt).toLocaleDateString()}</TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline">{redirect.count}</Badge>
-                                                </TableCell>
-                                                <TableCell className="max-w-[200px] truncate">
-                                                    <a
-                                                        href={`/${customer.id}/${redirect.am_id}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-500 hover:underline"
-                                                    >
-                                                        /{customer.id}/{redirect.am_id}
-                                                    </a>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        onClick={() => deleteRedirect(redirect.code)}
-                                                    >
-                                                        Löschen
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
-        </div>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        </AdminPageLayout>
     );
 } 

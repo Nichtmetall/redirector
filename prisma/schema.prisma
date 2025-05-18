@@ -21,9 +21,8 @@ model Customer {
 }
 
 model Redirect {
-  code             String
-  customerId       String
   am_id            String
+  customerId       String
   empfehlungsgeber String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -31,5 +30,5 @@ model Redirect {
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  @@id([code, customerId])
+  @@id([am_id, customerId])
 }
